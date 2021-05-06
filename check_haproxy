@@ -179,10 +179,12 @@ sub main {
   check_backends()  if $opt{'check_backends'};
   check_servers()   if $opt{'check_servers'};
 
-  my ($frontends, $backends, $servers, $services) = (0,0,0,0);
+  my ($frontends, $backends, $servers, $backup_servers, $services) = (0,0,0,0,0);
   my (%servers);
 
-  foreach my $service (sort keys %data) {
+  my $one_and_only_backend = "";
+  foreach $service (sort keys %data) {
+    $one_and_only_backend = $service;
     switch ($data{$service}{'type'}) {
       case TYPE_FRONTEND {
         ++$frontends;
@@ -190,7 +192,9 @@ sub main {
       case TYPE_BACKEND {
         ++$backends;
         foreach my $server (sort keys %{$data{$service}{'servers'}}) {
-          next if $data{$service}{'servers'}{$server}{'backup'};
+          if ($data{$service}{'servers'}{$server}{'backup'}) {
+            ++$backup_servers;
+          }
           ++$services;
           unless (exists $servers{$server}) {
             ++$servers;
@@ -202,9 +206,9 @@ sub main {
   }
 
   do_success(
-    _('HAProxy is functioning within established parameters. '.
-      '(%d frontends, %d backends, %d servers, %d services)',
-        $frontends, $backends, $servers, $services)
+    _('HAProxy with backend %s is functioning within established parameters. '.
+      '(%d servers, %d backup servers)|%s_online_servers=%d %s_backup_servers=%d',
+        $one_and_only_backend, $servers, $backup_servers, $one_and_only_backend, $servers, $one_and_only_backend, $backup_servers)
   );
 }
 
@@ -218,7 +222,7 @@ sub _report {
   croak('No message given') unless $message;
   _debug('report', "with status ${status} and message '${message}'");
 
-  printf "HAPROXY %s: %s (%s %s)\n", (EXIT_STATUS)[$status], $message, $_program, $_version;
+  printf "HAPROXY %s: %s\n", (EXIT_STATUS)[$status], $message;
   exit $status;
 }
 
@@ -549,17 +553,17 @@ sub check_backends {
 
     switch ($checks{$service}{'state'}) {
       case 'u' {
-        $msg = 'BACKEND %s has fallen below %d available server(s) (%d up, %d down, %d disabled)';
+        $msg = 'BACKEND %s has fallen below %d available server(s) (%d up, %d down, %d disabled)|%s_online_servers=%d %s_down_servers=%d %s_disabled_servers=%d';
       }
       case 'd' {
-        $msg = 'BACKEND %s has passed %d down/disabled servers (%d up, %d down, %d disabled)',
+        $msg = 'BACKEND %s has passed %d down/disabled servers (%d up, %d down, %d disabled)|%s_online_servers=%d %s_down_servers=%d %s_disabled_servers=%d',
       }
     }
 
-    do_critical(_($msg, $service, $checks{$service}{'be_crit'}, $up, $down, $disabled))
+    do_critical(_($msg, $service, $checks{$service}{'be_crit'}, $up, $down, $disabled, $service, $up, $service, $down, $service, $disabled))
       unless check_pass($checks{$service}{'state'}, $checks{$service}{'be_crit'},
         ($checks{$service}{'state'} eq 'u' ? $up : ($down+$disabled)), $total);
-    do_warning(_($msg, $service, $checks{$service}{'be_warn'}, $up, $down, $disabled))
+    do_warning(_($msg, $service, $checks{$service}{'be_warn'}, $up, $down, $disabled, $service, $up, $service, $down, $service, $disabled))
       unless check_pass($checks{$service}{'state'}, $checks{$service}{'be_warn'},
         ($checks{$service}{'state'} eq 'u' ? $up : ($down+$disabled)), $total);
 
