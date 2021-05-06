@@ -172,7 +172,7 @@ sub main {
     Timeout => 1,
   ) or do_unknown("Cannot connect to socket ".$opt{'socket'}, 1);
 
-  %data   = get_data($socket);
+  %data   = get_data($socket, \@overrides);
   %checks = build_checks(\@overrides);
 
   check_frontends() if $opt{'check_frontends'};
@@ -303,12 +303,26 @@ sub check_pass {
 sub get_data {
   my ($s, %v); $s = shift;
 
+
+  my $overrides = shift;
+  my @overrides = @{$overrides};
+  my $one_and_only_backend = "";
+  foreach my $override (sort @overrides) {
+    _debug('override', $override);
+    next unless ($override =~ /([^:]+):([udx]?)(?:,([0-9]*)(?:,([0-9]*)(?:,([0-9]*)%?(?:,([0-9]*)%?)?)?)?)?/);
+    $one_and_only_backend = $1;
+    _debug('single backend name', $one_and_only_backend);
+  }
+
   _debug('get_data', 'is reading data from HAProxy');
 
   print $s "show stat\n";
   while (<$s>) {
     chomp; next unless length;
     my @stat = split (',');
+    if ($one_and_only_backend ne $stat[STAT_PROXY_NAME]) {
+      next;
+    }
 
     switch ($stat[STAT_SERVICE_TYPE]) {
       # Process all FRONTEND type entries; these are singular and are totals
